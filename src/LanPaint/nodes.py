@@ -135,15 +135,11 @@ def reshape_mask(input_mask, output_shape,video_inpainting=False):
         target_frames = output_shape[2]
         target_height, target_width = output_shape[-2:]
 
-        # EXPERIMENTAL: nearest-exact first, then the slice-level union.
-        # The resample snaps each latent slice to a single picked frame
-        # (src = floor((t+0.5)*F/T), ~1 in 4 frames), then the sliding max
-        # over ~5 slices spreads the value to neighboring slices. NOTE: this
-        # drops strokes painted on frames that no slice picks.
-        input_mask = torch.nn.functional.interpolate(
+        # Union every source cell intersecting each latent bin before temporal
+        # dilation. Point sampling loses narrow strokes in both time and space.
+        input_mask = torch.nn.functional.adaptive_max_pool3d(
             input_mask,
-            size=(target_frames, target_height, target_width),
-            mode=scale_mode,
+            output_size=(target_frames, target_height, target_width),
         )
 
         mask = torch.nn.functional.max_pool3d(

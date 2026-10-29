@@ -10,6 +10,24 @@
 [![Discord](https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/yN5wYDE6W4)
 </div>
 
+## Local fork: video-mask coverage
+
+This fork preserves the [upstream LanPaint documentation](https://github.com/scraed/LanPaint/blob/master/README.md)
+and GPLv3 licensing. Video mask projection unions every source cell intersecting
+each normalized latent bin before the existing five-slice temporal dilation.
+Single-frame and single-pixel strokes therefore survive reduction; soft masks
+retain their maximum intensity. First and last frames participate, zero padding
+stays zero before dilation, and a still mask broadcasts. The bins are a mask
+coverage policy, not a model-specific causal-VAE receptive-field approximation.
+The original source masks still own final video/audio blending and its overlap.
+Audio-mask resampling is unchanged. CPU fixtures establish mask coverage, not
+generated quality or live ComfyUI activation.
+
+Use the existing ComfyUI Python runtime with Torch and pytest installed. Check
+readiness with `python -c 'import torch, pytest'`, then run
+`python -m pytest tests/test_reshape_mask.py tests/test_videomask.py tests/test_minimax_audio.py tests/test_av_schedule.py -q`.
+These isolated tests do not load models or submit workflows.
+
 
 Universally applicable inpainting ability for every model. LanPaint sampler lets the model "think" through multiple iterations before denoising, enabling you to invest more computation time for superior inpainting quality.  
 
@@ -720,7 +738,6 @@ url={https://openreview.net/forum?id=JPC8JyOUSW},
 note={}
 }
 ```
-
 
 
 
