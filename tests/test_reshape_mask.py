@@ -75,13 +75,10 @@ def test_prepare_mask_accepts_hw_and_moves_device(monkeypatch) -> None:
 
 
 def test_video_union_covers_picked_frames(monkeypatch) -> None:
-    """EXPERIMENTAL order (nearest-exact first, slice-level union): a stroke
-    on a frame that the resample picks survives, and the sliding max spreads
-    it to neighboring slices."""
+    """Coverage pooling retains strokes and temporal dilation joins nearby bins."""
     lanpaint_nodes = _import_nodes(monkeypatch, "0.6.0")
 
-    # 8 frames -> 2 slices; nearest-exact picks frames {2, 6}. Strokes on
-    # picked frames 2 and 6, on rows/cols the 8->4 grid samples ({1,3,5,7}).
+    # Strokes in separate temporal bins and separate spatial cells.
     mask = torch.zeros(8, 8, 8)
     mask[2, 5, 5] = 1.0
     mask[6, 7, 7] = 1.0
@@ -96,21 +93,44 @@ def test_video_union_covers_picked_frames(monkeypatch) -> None:
     assert out[0, 0, 1, 3, 3].item() == 1.0
 
 
-def test_video_union_drops_unpicked_frames(monkeypatch) -> None:
-    """EXPERIMENTAL order: a stroke on a frame that no slice picks (e.g.
-    frame 3, since nearest-exact picks {2, 6}) is silently lost."""
+def test_video_union_preserves_unpicked_frames(monkeypatch) -> None:
     lanpaint_nodes = _import_nodes(monkeypatch, "0.6.0")
 
     mask = torch.zeros(8, 8, 8)
     mask[3, 5, 5] = 1.0
 
     out = lanpaint_nodes.reshape_mask(mask, (1, 16, 2, 4, 4), video_inpainting=True)
-    assert out.max().item() == 0.0
+    assert out.max().item() == 1.0
+
+
+@pytest.mark.parametrize("frame", range(22))
+def test_every_h3_source_frame_and_narrow_pixel_survives(monkeypatch, frame):
+    lanpaint_nodes = _import_nodes(monkeypatch, "0.6.0")
+    mask = torch.zeros(22, 8, 8)
+    mask[frame, 0, 0] = 0.375
+    out = lanpaint_nodes.reshape_mask(mask, (1, 24, 7, 2, 2), video_inpainting=True)
+    assert out.max().item() == 0.375
+    assert torch.count_nonzero(out[0, 0, :, 0, 0]) <= 7
+    assert torch.count_nonzero(out[0, 0, :, 1, 1]) == 0
+
+
+@pytest.mark.parametrize("frames,slices", [(1, 1), (3, 1), (5, 1), (22, 7), (39, 13)])
+def test_video_coverage_zero_dense_soft_and_padded(monkeypatch, frames, slices):
+    lanpaint_nodes = _import_nodes(monkeypatch, "0.6.0")
+    shape = (2, 24, slices, 2, 2)
+    for value in (0.0, 0.25, 1.0):
+        out = lanpaint_nodes.reshape_mask(torch.full((frames, 8, 8), value), shape, video_inpainting=True)
+        torch.testing.assert_close(out, torch.full(shape, value))
+    mask = torch.zeros(frames, 8, 8)
+    mask[0] = 1
+    out = lanpaint_nodes.reshape_mask(mask, shape, video_inpainting=True)
+    assert out[:, :, 0].min() == 1
+    if slices > 3:
+        assert out[:, :, 3:].max() == 0
 
 
 def test_video_union_short_sequence(monkeypatch) -> None:
-    """A 3-frame sequence downsamples to one slice; the stroke must survive
-    if it lands on the frame the resample picks (floor(0.5*3) = frame 1)."""
+    """A short sequence's stroke survives projection to one slice."""
     lanpaint_nodes = _import_nodes(monkeypatch, "0.6.0")
 
     mask = torch.zeros(3, 8, 8)
